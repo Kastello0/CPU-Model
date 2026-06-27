@@ -1,24 +1,23 @@
-public class Process extends Thread implements ClockObserver{
-    private int burstTime, priority, priorityEscalation, numContextSwitches;
-    private long currentElapsed,finishTime, accumulatedTime, startTime, idleTime;
+public class Process extends Thread implements ClockObserver {
+    private int burstTime, priority, priorityEscalation;
+    private final int originalBurstTime;
+    private long currentElapsed, finishTime, accumulatedTime, startTime, idleTime;
     private final int arrivalTime, processID;
     private ProcessObserver observer;
     private Clock clock;
     private boolean started, paused = false;
+    private SimulationLogger logger;
 
-
-//implement lifetime by getting currenttime - arrivaltime, update priority accordingly
-    public Process(int pid, int arrivalTime, int burstTime, int priority){
+    //implement lifetime by getting currenttime - arrivaltime, update priority accordingly
+    public Process(int pid, int arrivalTime, int burstTime, int priority, SimulationLogger logger){
         this.processID = pid;
         this.arrivalTime = arrivalTime;
         this.burstTime = burstTime;
+        this.originalBurstTime = burstTime;
         this.priority = priority;
         this.priorityEscalation = 0;
+        this.logger = logger;
         clock = Clock.getInstance();
-    }
-
-    public long getAccumulatedTime() {
-        return accumulatedTime;
     }
 
     public synchronized void setAccumulatedTime(long accumulatedTime) {
@@ -36,7 +35,7 @@ public class Process extends Thread implements ClockObserver{
                     try {
                         stopTime = clock.getElapsedTime();
                         wait();
-                        idleTime += clock.getElapsedTime()-stopTime;
+                        idleTime += clock.getElapsedTime() - stopTime;
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                         return;
@@ -45,26 +44,31 @@ public class Process extends Thread implements ClockObserver{
             }
             synchronized (this) {
                 currentElapsed = getElapsed();
-                if (currentElapsed > 1000+accumulatedTime) {
+                if (currentElapsed > 1000 + accumulatedTime) {
                     setAccumulatedTime(accumulatedTime + 1000);
                     this.burstTime--;
-                    System.out.println("Processing... Remaining burst time: " + burstTime);
+
+                    if (logger != null) {
+                        logger.log("Processing... Remaining burst time: " + burstTime);
+                        logger.updateProcessProgress(processID, burstTime, originalBurstTime);
+                    }
                 }
-                if (burstTime == 0) {
+                if (burstTime <= 0) {
                     finishTime = clock.getElapsedTime();
                     finishProcess();
                     started = false;
-                    System.out.println("Process " + processID + " finished");
+                    if (logger != null) logger.log("Process " + processID + " finished");
                 }
                 try {
-                    Thread.sleep(10); // Reduce CPU usage by pausing briefly
+                    Thread.sleep(10);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
-                    System.out.println("Process " + getProcessID() + " interrupted.");
+                    if (logger != null) logger.log("Process " + getProcessID() + " interrupted.");
                 }
             }
         }
     }
+
     public void run(){
         process();
     }
@@ -112,8 +116,9 @@ public class Process extends Thread implements ClockObserver{
     public long getResponseTime(){return startTime - arrivalTime * 1000L;}
 
     public double getWaitTime(){return idleTime;}
+
     public double getTurnaroundTime() {
-        return finishTime-startTime;
+        return finishTime - startTime;
     }
 
     public int getProcessID() {
@@ -147,5 +152,4 @@ public class Process extends Thread implements ClockObserver{
                 ", priority=" + priority +
                 '}';
     }
-
 }
